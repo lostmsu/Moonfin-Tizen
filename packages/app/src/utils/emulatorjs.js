@@ -1,5 +1,5 @@
 // EmulatorJS control glue. Ports the Moonbase plugin player.html script so the enact app
-// drives EmulatorJS directly (no iframe / postMessage). Loader + WASM cores come from the path
+// drives EmulatorJS directly, in a disposable frame on legacy WebViews. Loader + WASM cores come from the path
 // the server resolved when this TV can reach it, otherwise the trusted-cert CDN, which works on
 // old webOS. The ROM is either a direct server URL EmulatorJS streams itself or a Blob URL the
 // app already fetched, and the BIOS is always a Blob URL.
@@ -9,7 +9,12 @@ import $L from '@enact/i18n/$L';
 
 import serverLogger from '../services/serverLogger';
 import {isWebOS, isTizen} from '../platform';
-import {patchLegacyEmulatorClass} from './emulatorLegacy';
+import {patchLegacyEmulatorClass, needsLegacyCore} from './emulatorLegacy';
+import {createEmulatorFrame} from './emulatorFrame';
+
+let emulatorWindow = window;
+let emulatorDocument = document;
+let releaseFrame = null;
 
 const logGames = (message, context) =>
 	serverLogger.debug(serverLogger.LOG_CATEGORIES.APP, `[Games] ${message}`, context);
@@ -19,8 +24,8 @@ const logGamesError = (message, context) =>
 const CDN = 'https://cdn.emulatorjs.org/stable/data/';
 
 let loaderScript = null;
-// The config loader.js built and the class it constructed. Both outlive a teardown, so a later
-// launch can build an emulator straight away instead of downloading the bundle again.
+// On modern WebViews these outlive teardown, so a later launch can reuse the bundle.
+// Legacy WebViews discard the constructor along with the entire emulator frame.
 let loadedConfig = null;
 let EmulatorCtor = null;
 // Stops waiting on the boot in progress, so a teardown doesn't leave its timeout running.
@@ -44,9 +49,9 @@ const addCleanup = (emu, cleanup) => {
 	emu.moonfinCleanups.push(cleanup);
 };
 
-// Runs fn and records on emu how to take off every listener it put on window and document.
+// Runs fn and records on emu how to take off every listener it put on emulatorWindow and emulatorDocument.
 const recordPageListeners = (emu, fn) => {
-	const restore = [window, document].map((target) => {
+	const restore = [emulatorWindow, emulatorDocument].map((target) => {
 		const add = target.addEventListener;
 		return shadow(target, 'addEventListener', function (type, listener, options) {
 			addCleanup(emu, () => target.removeEventListener(type, listener, options));
@@ -78,7 +83,7 @@ const makeReleasable = (Ctor) => {
 	// The core watches the battery and polls memory use for its own stats, and neither ever stops.
 	// A TV has no use for either, so the core starts without them.
 	wrap('startGame', (emu, run) => {
-		const restore = [shadow(performance, 'memory', undefined), shadow(navigator, 'getBattery', undefined)];
+		const restore = [shadow(emulatorWindow.performance, 'memory', undefined), shadow(emulatorWindow.navigator, 'getBattery', undefined)];
 		try {
 			return recordPageListeners(emu, run);
 		} finally {
@@ -94,15 +99,15 @@ const makeReleasable = (Ctor) => {
 	proto.moonfinReleasable = true;
 };
 
-// The bundle publishes its class on window before loader.js builds the first emulator from it,
+// The bundle publishes its class on emulatorWindow before loader.js builds the first emulator from it,
 // so catching that assignment wraps the class before any emulator exists.
 const watchForEmulatorClass = () => {
-	if (window.EmulatorJS) {
-		makeReleasable(window.EmulatorJS);
+	if (emulatorWindow.EmulatorJS) {
+		makeReleasable(emulatorWindow.EmulatorJS);
 		return;
 	}
 	let published;
-	Object.defineProperty(window, 'EmulatorJS', {
+	Object.defineProperty(emulatorWindow, 'EmulatorJS', {
 		configurable: true,
 		enumerable: true,
 		get: () => published,
@@ -124,7 +129,7 @@ const releaseEmulator = (emu) => {
 	// Cores with analog sticks get on-screen joysticks, which join a page-wide nipplejs list with
 	// handlers that hold the emulator.
 	try {
-		window.nipplejs.factory
+		emulatorWindow.nipplejs.factory
 			.filter((joystick) => emu.elements.parent.contains(joystick.options.zone))
 			.forEach((joystick) => joystick.destroy());
 	} catch (e) { /* ignore */ }
@@ -200,7 +205,7 @@ const READY_TIMEOUT = 40000;
 // EmulatorJS writes what it is doing into its own status element, which is the only clue to
 // where a boot stalled once it stops making progress.
 const emulatorStatusText = () => {
-	const emu = window.EJS_emulator;
+	const emu = emulatorWindow.EJS_emulator;
 	return (emu && emu.textElem && emu.textElem.innerText) || null;
 };
 
@@ -208,14 +213,20 @@ const emulatorStatusText = () => {
 // stateBytes is a save state EmulatorJS loads itself once the game has started.
 export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, settingsJson, stateBytes, dataPath}) =>
 	new Promise((resolve, reject) => {
+		if (needsLegacyCore() && !releaseFrame) {
+			const frame = createEmulatorFrame(selector);
+			emulatorWindow = frame.window;
+			emulatorDocument = frame.document;
+			releaseFrame = frame.release;
+		}
 		if (settingsJson) {
-			try { window.localStorage.setItem('ejs-settings', settingsJson); } catch (e) { /* ignore */ }
+			try { emulatorWindow.localStorage.setItem('ejs-settings', settingsJson); } catch (e) { /* ignore */ }
 		}
 
 		const startedAt = Date.now();
 		const dataRoot = dataPath || CDN;
 		// A boot that dies before EmulatorJS can say so, like a bundle this WebView can't parse,
-		// only shows up as an uncaught error. Watch the window for as long as the boot runs to keep it.
+		// only shows up as an uncaught error. Watch the emulatorWindow for as long as the boot runs to keep it.
 		const onWindowError = (ev) => logGamesError('window error during emulator boot', {
 			core,
 			message: ev.message || String(ev.error || ''),
@@ -225,11 +236,11 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 			core,
 			reason: String((ev.reason && (ev.reason.message || ev.reason)) || '')
 		});
-		window.addEventListener('error', onWindowError);
-		window.addEventListener('unhandledrejection', onRejection);
+		emulatorWindow.addEventListener('error', onWindowError);
+		emulatorWindow.addEventListener('unhandledrejection', onRejection);
 		const stopWatching = () => {
-			window.removeEventListener('error', onWindowError);
-			window.removeEventListener('unhandledrejection', onRejection);
+			emulatorWindow.removeEventListener('error', onWindowError);
+			emulatorWindow.removeEventListener('unhandledrejection', onRejection);
 		};
 
 		// A TV that runs out of memory mid-boot takes the app with it and never reaches the
@@ -241,18 +252,18 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 			blobRom: String(gameUrl || '').startsWith('blob:'),
 			serverCores: dataRoot !== CDN
 		});
-		window.EJS_player = selector;
-		window.EJS_core = core;
-		window.EJS_gameUrl = gameUrl;
-		if (biosUrl) window.EJS_biosUrl = biosUrl;
-		if (gameName) window.EJS_gameName = gameName;
-		if (stateBytes) window.EJS_loadStateURL = stateBytes;
-		window.EJS_pathtodata = dataRoot;
-		window.EJS_language = 'en-US';
-		window.EJS_startOnLoaded = true;
-		window.EJS_threads = false;
+		emulatorWindow.EJS_player = selector;
+		emulatorWindow.EJS_core = core;
+		emulatorWindow.EJS_gameUrl = gameUrl;
+		if (biosUrl) emulatorWindow.EJS_biosUrl = biosUrl;
+		if (gameName) emulatorWindow.EJS_gameName = gameName;
+		if (stateBytes) emulatorWindow.EJS_loadStateURL = stateBytes;
+		emulatorWindow.EJS_pathtodata = dataRoot;
+		emulatorWindow.EJS_language = 'en-US';
+		emulatorWindow.EJS_startOnLoaded = true;
+		emulatorWindow.EJS_threads = false;
 		// No touch screen on TV; keep the on-screen pad off.
-		window.EJS_defaultOptions = Object.assign({}, window.EJS_defaultOptions, {'virtual-gamepad': 'disabled'});
+		emulatorWindow.EJS_defaultOptions = Object.assign({}, emulatorWindow.EJS_defaultOptions, {'virtual-gamepad': 'disabled'});
 
 		let reused = false;
 		let settled = false;
@@ -308,7 +319,7 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 			if (emulator.failedToStart) failed(emulatorStatusText());
 			else if (emulator.started) started();
 		};
-		window.EJS_ready = () => onReady(window.EJS_emulator);
+		emulatorWindow.EJS_ready = () => onReady(emulatorWindow.EJS_emulator);
 
 		// Once the bundle is parsed a later launch can build the emulator from the cached class
 		// instead of downloading the loader again. loader.js hooks the ready callback up itself
@@ -326,11 +337,11 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 					dataPath: dataRoot,
 					startOnLoad: true,
 					threads: false,
-					defaultOptions: window.EJS_defaultOptions
+					defaultOptions: emulatorWindow.EJS_defaultOptions
 				});
 				const emulator = new EmulatorCtor(selector, config);
-				window.EJS_emulator = emulator;
-				window.EJS_adBlocked = (url, del) => emulator.adBlocked(url, del);
+				emulatorWindow.EJS_emulator = emulator;
+				emulatorWindow.EJS_adBlocked = (url, del) => emulator.adBlocked(url, del);
 				emulator.on('ready', () => onReady(emulator));
 				reused = true;
 				return;
@@ -342,15 +353,15 @@ export const startEmulator = ({selector, core, gameUrl, biosUrl, gameName, setti
 			}
 		}
 
-		loaderScript = document.createElement('script');
+		loaderScript = emulatorDocument.createElement('script');
 		loaderScript.src = dataRoot + 'loader.js';
 		// Without this the promise sits on the full timeout when the loader is simply unreachable.
 		loaderScript.onerror = () => finish(new Error('emulator-loader-unreachable'));
 		watchForEmulatorClass();
-		document.body.appendChild(loaderScript);
+		emulatorDocument.body.appendChild(loaderScript);
 	});
 
-const gm = () => window.EJS_emulator && window.EJS_emulator.gameManager;
+const gm = () => emulatorWindow.EJS_emulator && emulatorWindow.EJS_emulator.gameManager;
 
 export const restart = () => { const g = gm(); if (g && g.restart) g.restart(); };
 export const toggleFastForward = (on) => { const g = gm(); if (g && g.toggleFastForward) g.toggleFastForward(on ? 1 : 0); };
@@ -360,11 +371,11 @@ export const getState = () => { const g = gm(); return g && g.getState ? g.getSt
 export const loadState = (bytes) => { const g = gm(); if (g && g.loadState && bytes) g.loadState(bytes); };
 
 export const getSettingsJson = () => {
-	try { return window.localStorage.getItem('ejs-settings'); } catch (e) { return null; }
+	try { return emulatorWindow.localStorage.getItem('ejs-settings'); } catch (e) { return null; }
 };
 
 export const setOption = (id, value) => {
-	const emu = window.EJS_emulator;
+	const emu = emulatorWindow.EJS_emulator;
 	if (emu && emu.changeSettingOption) emu.changeSettingOption(id, value);
 };
 
@@ -381,7 +392,7 @@ const GENERAL = [
 // Returns [{id, label, choices:[{value,label}], current}] for the native settings screen.
 export const getOptions = () => {
 	const out = [];
-	const emu = window.EJS_emulator;
+	const emu = emulatorWindow.EJS_emulator;
 	const g = gm();
 	try {
 		const raw = g && g.getCoreOptions ? g.getCoreOptions() : null;
@@ -485,7 +496,7 @@ const openControlRow = (emu) => {
 	const row = controlRows(emu)[controlFocus.index];
 	if (!row) return;
 	// EmulatorJS opens its capture popup on mousedown.
-	row.dispatchEvent(new window.MouseEvent('mousedown', {bubbles: true}));
+	row.dispatchEvent(new emulatorWindow.MouseEvent('mousedown', {bubbles: true}));
 	const player = Number(emu.controlPopup.getAttribute('player-num'));
 	const button = Number(emu.controlPopup.getAttribute('button-num'));
 	const binding = emu.controls[player] && emu.controls[player][button];
@@ -546,7 +557,7 @@ const changeGamepad = (emu, delta) => {
 // Opens the mapping screen on its first row. False when EmulatorJS doesn't have it.
 export const openControls = () => {
 	try {
-		const emu = window.EJS_emulator;
+		const emu = emulatorWindow.EJS_emulator;
 		if (!emu || !emu.controlMenu || !emu.controlPopup || !emu.controls) return false;
 		watchGamepadCaptures(emu);
 		emu.controlMenu.style.display = '';
@@ -563,7 +574,7 @@ export const openControls = () => {
 // Returns 'back' or 'close' once the screen has closed, otherwise null.
 export const controlInput = (label) => {
 	try {
-		const emu = window.EJS_emulator;
+		const emu = emulatorWindow.EJS_emulator;
 		if (!emu || !emu.controlMenu || emu.controlMenu.style.display === 'none') return null;
 		const popup = capturePopup(emu);
 		const popupOpen = popup.getAttribute('hidden') === null;
@@ -632,9 +643,9 @@ export const controlInput = (label) => {
 // Tears the emulator down: releases it, clears the container, drops EJS globals + loader.
 export const destroyEmulator = () => {
 	if (abandonBoot) abandonBoot();
-	if (window.EJS_emulator) releaseEmulator(window.EJS_emulator);
+	if (emulatorWindow.EJS_emulator) releaseEmulator(emulatorWindow.EJS_emulator);
 	try {
-		const el = document.querySelector(window.EJS_player || '#game');
+		const el = emulatorDocument.querySelector(emulatorWindow.EJS_player || '#game');
 		if (el) el.innerHTML = '';
 	} catch (e) { /* ignore */ }
 	if (loaderScript && loaderScript.parentNode) {
@@ -644,5 +655,16 @@ export const destroyEmulator = () => {
 	['EJS_emulator', 'EJS_player', 'EJS_core', 'EJS_gameUrl', 'EJS_biosUrl', 'EJS_gameName',
 		'EJS_loadStateURL', 'EJS_pathtodata', 'EJS_startOnLoaded', 'EJS_threads', 'EJS_ready',
 		'EJS_defaultOptions', 'EJS_adBlocked']
-		.forEach((k) => { try { delete window[k]; } catch (e) { /* ignore */ } });
+		.forEach((k) => { try { delete emulatorWindow[k]; } catch (e) { /* ignore */ } });
+	if (releaseFrame) {
+		const release = releaseFrame;
+		releaseFrame = null;
+		emulatorWindow = window;
+		emulatorDocument = document;
+		// A constructor from the old frame would keep that whole realm alive.
+		loadedConfig = null;
+		EmulatorCtor = null;
+		return release();
+	}
+	return undefined;
 };

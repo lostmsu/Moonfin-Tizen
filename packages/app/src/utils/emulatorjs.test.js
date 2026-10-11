@@ -116,6 +116,47 @@ const loadModule = () => {
 	FakeEmulator.instances = [];
 };
 
+describe('legacy emulator isolation', () => {
+	test('successive games use fresh frames and never reuse a detached constructor', async () => {
+		const ua = Object.getOwnPropertyDescriptor(navigator, 'userAgent');
+		Object.defineProperty(navigator, 'userAgent', {configurable: true, value: 'Chrome/76.0.3809.146'});
+		jest.useFakeTimers();
+		document.body.innerHTML = '<div id="game"></div>';
+		loadModule();
+		let previous;
+		try {
+			for (let i = 0; i < 2; i++) {
+				const booting = launch({gameUrl: `blob:rom-${i}`});
+				const frame = document.querySelector('iframe');
+				const child = frame.contentWindow;
+				expect(child).not.toBe(previous);
+				expect(window.EJS_emulator).toBeUndefined();
+				expect(child.EJS_gameUrl).toBe(`blob:rom-${i}`);
+				expect(child.document.querySelector('script').src).toContain('loader.js');
+				// No cached constructor ran before this game's loader.
+				expect(FakeEmulator.instances).toHaveLength(i);
+				child.EJS_emulator = new FakeEmulator('#game', {});
+				child.EJS_ready();
+				startGame(child.EJS_emulator);
+				await booting;
+				const released = destroyEmulator();
+				expect(child.EJS_emulator).toBeUndefined();
+				jest.advanceTimersByTime(1200);
+				await released;
+				expect(document.querySelector('iframe')).toBeNull();
+				previous = child;
+			}
+		} finally {
+			destroyEmulator();
+			jest.runOnlyPendingTimers();
+			jest.useRealTimers();
+			document.body.innerHTML = '';
+			if (ua) Object.defineProperty(navigator, 'userAgent', ua);
+			else delete navigator.userAgent;
+		}
+	});
+});
+
 describe('startEmulator save state', () => {
 	beforeEach(loadModule);
 

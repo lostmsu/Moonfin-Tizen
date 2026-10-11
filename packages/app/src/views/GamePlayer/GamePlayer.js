@@ -276,6 +276,7 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 			await Promise.race([persist(), cap]);
 		} catch (e) { /* leaving either way */ }
 		clearTimeout(timer);
+		await ejs.destroyEmulator();
 		if (onBack) onBack();
 	}, [saveState, onBack]);
 
