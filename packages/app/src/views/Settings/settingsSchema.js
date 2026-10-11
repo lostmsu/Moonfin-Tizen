@@ -396,6 +396,7 @@ export const SETTINGS_SCHEMA = [
 				label: () => $L('Home Screen'),
 				description: () => $L('Sections, image types, overlays, and media previews'),
 				rows: [
+					{kind: KIND.TOGGLE, key: 'gameCentricHome', label: () => $L('Game-first Home'), desc: () => $L('Open Home with recently played games and console libraries. Movies and TV remain available.'), icon: 'sports_esports'},
 					{kind: KIND.SECTION, id: 'homeRowDisplay', label: () => $L('Home Row Display')},
 					{kind: KIND.OPTION, key: 'homeRowsStyle', label: () => $L('Row Type'), desc: () => $L('Classic keeps per-row image type and info overlay. Modern uses portrait-to-backdrop rows.'), options: getHomeRowsStyleOptions, fallback: () => $L('Modern'), icon: 'appscontents'},
 					{kind: KIND.TOGGLE, key: 'modernCardsOnMyMediaRow', label: () => $L('Modern cards on My Media row'), desc: () => $L('Display customizable posters that expand on focus. Disable to always show landscape thumbnail.'), icon: 'picture', when: (ctx) => ctx.settings.homeRowsStyle !== 'v1'},

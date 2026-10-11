@@ -7,7 +7,6 @@ import {VirtualGridList} from '@enact/sandstone/VirtualList';
 
 import LoadingSpinner from '../../components/LoadingSpinner';
 import SpottableInput from '../../components/SpottableInput/SpottableInput';
-import BackdropLayer from '../../components/BackdropLayer';
 import * as gamesApi from '../../services/gamesApi';
 import {useSettings} from '../../context/SettingsContext';
 import {gameDisplayTitle, gameFallbackColor, hideBrokenArt} from '../../utils/gameArt';
@@ -37,9 +36,6 @@ const COVER_HEIGHT = Math.round(CARD_WIDTH * 1.34);
 const CAPTION_HEIGHT = 70;
 const CARD_HEIGHT = COVER_HEIGHT + CAPTION_HEIGHT;
 
-// What the backdrop tries in turn.
-const BACKDROP_KINDS = ['snap', 'title', 'boxart'];
-
 const handleToolbarKeyDown = createToolbarKeyDown('game-grid', 'game-search');
 const handleGridKeyDown = createGridKeyDown(css.grid, 'game-back-btn');
 
@@ -52,12 +48,10 @@ const GameSystem = ({library, system, onSelectGame, onBack, backHandlerRef}) => 
 	const [letter, setLetter] = useState(ALL_LETTER);
 	const [focusedGame, setFocusedGame] = useState(null);
 	const [detail, setDetail] = useState(null);
-	const [backdropUrl, setBackdropUrl] = useState('');
 
 	const libraryId = library?.Id;
 	const systemId = system?.id;
 	const detailRequestRef = useRef(0);
-	const backdropsEnabled = settings?.showHomeBackdrop !== false && !settings?.hideBackdropsInLibraries;
 
 	useEffect(() => {
 		let cancelled = false;
@@ -138,30 +132,6 @@ const GameSystem = ({library, system, onSelectGame, onBack, backHandlerRef}) => 
 		return () => clearTimeout(id);
 	}, [libraryId, focusedGame]);
 
-	// The screenshot stands in for a backdrop, falling back to the title screen
-	// and then the cover, since not every rom set carries all three.
-	useEffect(() => {
-		const gameId = focusedGame?.id;
-		if (!backdropsEnabled || !libraryId || !gameId) {
-			setBackdropUrl('');
-			return undefined;
-		}
-		let cancelled = false;
-		const timer = setTimeout(() => {
-			let attempt = 0;
-			const probe = () => {
-				if (cancelled || attempt >= BACKDROP_KINDS.length) return;
-				const url = gamesApi.gameThumbUrl(libraryId, gameId, BACKDROP_KINDS[attempt]);
-				const img = new window.Image();
-				img.onload = () => { if (!cancelled) setBackdropUrl(url); };
-				img.onerror = () => { attempt++; probe(); };
-				img.src = url;
-			};
-			probe();
-		}, 250);
-		return () => { cancelled = true; clearTimeout(timer); };
-	}, [backdropsEnabled, libraryId, focusedGame]);
-
 	const handleSearchChange = useCallback((ev) => {
 		setSearchQuery(ev.target.value);
 		setLetter(ALL_LETTER);
@@ -233,9 +203,7 @@ const GameSystem = ({library, system, onSelectGame, onBack, backHandlerRef}) => 
 
 	return (
 		<div className={css.page}>
-			{backdropsEnabled && (
-				<BackdropLayer targetUrl={backdropUrl} blurAmount={settings?.backdropBlurHome} />
-			)}
+			{/* Small ROM covers/screenshots are card art, never full-screen backdrops. */}
 			<div className={css.content}>
 				<div className={css.header}>
 					<div className={css.headerSide} />

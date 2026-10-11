@@ -1,4 +1,5 @@
-import {getRomUrl, getStateBytes, putStateBytes} from './gamesApi';
+import {getRomUrl, getStateBytes, putStateBytes, getGameHistory, putGameHistory} from './gamesApi';
+import {platformFetch} from './secureFetch';
 import {fetchWithTimeout} from '../utils/fetchTimeout';
 
 let mockToken = 'key';
@@ -14,6 +15,26 @@ jest.mock('./jellyfinApi', () => ({
 }));
 
 const MB = 1024 * 1024;
+
+describe('game history blob', () => {
+	beforeEach(() => platformFetch.mockReset());
+	test('a missing blob means no history, but a server failure is not treated as empty', async () => {
+		platformFetch.mockResolvedValue({status: 404});
+		await expect(getGameHistory()).resolves.toEqual([]);
+		platformFetch.mockResolvedValue({status: 500, ok: false});
+		await expect(getGameHistory()).rejects.toThrow('500');
+	});
+	test('history uses a separate settings blob and validates its schema', async () => {
+		const entries = [{libraryId: 'nes', gameId: 'mermaid', playedAt: 123}];
+		platformFetch.mockResolvedValue({ok: true, status: 200, text: async () => JSON.stringify({version: 1, entries})});
+		await expect(getGameHistory()).resolves.toEqual(entries);
+		expect(platformFetch.mock.calls[0][0]).toBe('https://server/Moonfin/Games/Saves/moonfin-recent-games?kind=settings');
+		await putGameHistory(entries);
+		expect(platformFetch.mock.calls[1][1]).toMatchObject({method: 'PUT', body: JSON.stringify({version: 1, entries})});
+		platformFetch.mockResolvedValue({ok: true, status: 200, text: async () => '{}'});
+		await expect(getGameHistory()).rejects.toThrow('Invalid game history');
+	});
+});
 
 const response = ({status = 200, headers = {}} = {}) => {
 	const lower = {};

@@ -128,6 +128,7 @@ export const defaultSettings = {
 	hiddenContinueWatchingItems: null,
 	hiddenNextUpSeries: null,
 	showHomeBackdrop: true,
+	gameCentricHome: true,
 	backdropBlurHome: 20,
 	backdropBlurDetail: 20,
 	serverLogging: false,

@@ -9,6 +9,7 @@ import $L from '@enact/i18n/$L';
 
 import serverLogger from '../services/serverLogger';
 import {isWebOS, isTizen} from '../platform';
+import {patchLegacyEmulatorClass} from './emulatorLegacy';
 
 const logGames = (message, context) =>
 	serverLogger.debug(serverLogger.LOG_CATEGORIES.APP, `[Games] ${message}`, context);
@@ -63,6 +64,7 @@ const recordPageListeners = (emu, fn) => {
 // holds the emulator and its WebAssembly memory. This wraps the class so every emulator it builds
 // can be cleared up by releaseEmulator.
 const makeReleasable = (Ctor) => {
+	patchLegacyEmulatorClass(Ctor);
 	const proto = Ctor && Ctor.prototype;
 	if (!proto || proto.moonfinReleasable) return;
 	const wrap = (name, around) => {

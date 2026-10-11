@@ -126,6 +126,7 @@
 		"dist/*"
 	],
 	"dependencies": {
+		"@babel/standalone": "7.26.10",
 		"@enact/core": "^4.8.0",
 		"@enact/i18n": "^4.8.0",
 		"@enact/sandstone": "^2.8.0",

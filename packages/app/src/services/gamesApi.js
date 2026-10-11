@@ -14,6 +14,7 @@ import {fetchWithTimeout} from '../utils/fetchTimeout';
 
 // A stable per-user id for the global settings blob (settings are not per game).
 export const SETTINGS_ID = 'moonfin-global';
+const HISTORY_ID = 'moonfin-recent-games';
 
 const base = () => (getServerUrl() || '').replace(/\/+$/, '');
 const authHeaders = () => {
@@ -49,6 +50,25 @@ export const getGame = (libraryId, gameId) =>
 // Pins the current user's core for an arcade game and returns the game as it now plays.
 export const setGameCoreOverride = (libraryId, gameId, core) =>
 	jsonRequest(`${enc(libraryId)}/Games/${enc(gameId)}/Core`, {method: 'PUT', body: {core}});
+
+// A separate per-user JSON blob: never mix history with emulator settings or
+// save states. This works with the existing plugin, without a server upgrade.
+export const getGameHistory = async () => {
+	const res = await platformFetch(`${base()}/Moonfin/Games/Saves/${HISTORY_ID}?kind=settings`, {headers: authHeaders()}, 10000);
+	if (res.status === 404) return [];
+	if (!res.ok) throw new Error(`Game history fetch error: ${res.status}`);
+	const history = JSON.parse(await res.text());
+	if (history.version !== 1 || !Array.isArray(history.entries)) throw new Error('Invalid game history');
+	return history.entries;
+};
+
+export const putGameHistory = async (entries) => {
+	const res = await platformFetch(`${base()}/Moonfin/Games/Saves/${HISTORY_ID}?kind=settings`, {
+		method: 'PUT', headers: {...authHeaders(), 'Content-Type': 'application/octet-stream'},
+		body: JSON.stringify({version: 1, entries})
+	}, 10000);
+	if (!res.ok) throw new Error(`Game history upload error: ${res.status}`);
+};
 
 // Image tags can't send auth headers, so the token rides in the query.
 // kind defaults to boxart but also accepts snap or title.

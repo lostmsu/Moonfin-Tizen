@@ -85,6 +85,7 @@ const SeerrBrowse = lazy(() => import('../views/SeerrBrowse'));
 const SeerrPerson = lazy(() => import('../views/SeerrPerson'));
 const SeerrCollection = lazy(() => import('../views/SeerrCollection'));
 const Games = lazy(() => import('../views/Games'));
+const GamesHome = lazy(() => import('../views/Games/GamesHome'));
 const GameSystem = lazy(() => import('../views/GameSystem'));
 const GameDetails = lazy(() => import('../views/GameDetails'));
 const GamePlayer = lazy(() => import('../views/GamePlayer'));
@@ -189,6 +190,9 @@ const AppContent = (props) => {
 	}, [settingsLoaded, user?.Id, serverUrl, legacyBlockedRatings, updateSettings]);
 
 	const [panelIndex, setPanelIndex] = useState(PANELS.LOGIN);
+	const [mediaHome, setMediaHome] = useState(false);
+	const gameHome = settings.gameCentricHome !== false && !mediaHome && !unifiedMode;
+	const handleMediaHome = useCallback(() => setMediaHome(true), []);
 
 	// Banners for badges the user just unlocked, shown in turn so they dont stack. The plugin's
 	// grouping setting decides between one banner for the lot and one each.
@@ -1171,6 +1175,7 @@ const AppContent = (props) => {
 	}, [navigateTo]);
 
 	const handleHome = useCallback(() => {
+		setMediaHome(false);
 		setPanelHistory([]);
 		setSelectedItem(null);
 		setSelectedLibrary(null);
@@ -1506,6 +1511,7 @@ const AppContent = (props) => {
 	const hasLiveTv = libraries.some(isLiveTvLibrary);
 
 	const showNavBar = panelIndex !== PANELS.LOGIN &&
+		!(panelIndex === PANELS.BROWSE && gameHome) &&
 		panelIndex !== PANELS.PLAYER &&
 		panelIndex !== PANELS.GAME_PLAYER &&
 		panelIndex !== PANELS.GAMES &&
@@ -1567,7 +1573,9 @@ const AppContent = (props) => {
 							<Login onLoggedIn={handleLoggedIn} backHandlerRef={backHandlerRef} />
 						</Panel>
 						<Panel>
-							<Browse
+							{gameHome ? <GamesHome key={`${serverUrl}:${user?.Id}`}
+								onSelectSystem={handleSelectGameSystem} onSelectGame={handleSelectGame}
+								onMediaHome={handleMediaHome} onSettings={handleOpenSettings} /> : <Browse
 								onSelectItem={handleSelectItem}
 								onSelectLibrary={handleSelectLibrary}
 								onOpenRecordings={handleOpenRecordings}
@@ -1583,7 +1591,7 @@ const AppContent = (props) => {
 								onFocusItemThemeMusic={themeMusic.playThemeMusicDelayed}
 								onBlurItemThemeMusic={themeMusic.cancelDelayed}
 								onLeaveThemeMusic={themeMusic.stopThemeMusic}
-							/>
+							/>}
 						</Panel>
 						<Panel>
 							{panelIndex === PANELS.DETAILS && (
@@ -1758,6 +1766,7 @@ const AppContent = (props) => {
 								<Games
 									library={selectedGameLibrary}
 									onSelectSystem={handleSelectGameSystem}
+									onSelectGame={handleSelectGame}
 									onHome={handleHome}
 									backHandlerRef={backHandlerRef}
 								/>
@@ -1902,7 +1911,7 @@ const AppContent = (props) => {
 			/>
 			{/* Home only, and unmounted under the screensaver and the full screen overlays so it
 			never keeps animating behind them. */}
-			{panelIndex === PANELS.BROWSE && !showScreensaver && !showShuffleOverlay &&
+			{panelIndex === PANELS.BROWSE && !gameHome && !showScreensaver && !showShuffleOverlay &&
 				!photoViewerItem && !comicViewerItem && (
 				<SeasonalTheme theme={settings.seasonalTheme} density={settings.seasonalDensity} />
 			)}

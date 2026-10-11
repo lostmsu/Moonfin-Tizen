@@ -171,17 +171,13 @@ const GameDetails = ({library, gameId, initialGame, onPlay, onSelectGame, backHa
 	if (loading) return <div className={css.center}><LoadingSpinner /></div>;
 	if (!game) return <div className={css.center}><div>{$L('Game not found.')}</div></div>;
 
-	const backdrop = gamesApi.gameThumbUrl(libraryId, game.id, 'snap');
 	const poster = gamesApi.gameThumbUrl(libraryId, game.id);
 	const title = gameDisplayTitle(game.title, game.fileName);
 	const primary = primaryAction(saveReadiness);
 
 	return (
 		<div className={css.root}>
-			<div
-				className={css.backdrop}
-				style={backdrop ? {backgroundImage: `url(${backdrop})`} : {background: gameFallbackColor(game.id)}}
-			/>
+			<div className={css.backdrop} style={{background: gameFallbackColor(game.id)}} />
 			<div className={css.scrim} />
 			<div className={css.content}>
 				<div

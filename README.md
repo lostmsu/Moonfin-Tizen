@@ -19,6 +19,18 @@
 
 Moonfin is a Jellyfin and Emby client for Samsung Smart TVs (Tizen), LG Smart TVs (webOS), Fire TV sticks running Vega OS and Xbox consoles. One shared codebase powers every platform, with a video pipeline tuned for each, so you get hardware-accelerated playback, a UI designed around a remote instead of a mouse, and features that most TV clients leave out.
 
+## `lost` branch: game-first TV
+
+This fork starts from upstream release **2.10.0**. Home opens the ROM libraries and recently played games; **Movies & TV** opens the original media home. Turn off **Settings → Home Screen → Game-first Home** to restore the original default. Unified multi-server mode keeps the original media home.
+
+Game lists and details no longer enlarge ROM screenshots or box art into full-screen backgrounds. Covers remain on cards and on the details screen.
+
+The release had no game play-history tracking or recently-played UI. This branch records games only after a successful emulator start. History is scoped to the server/account, kept locally, and synced using the existing plugin's separate `moonfin-recent-games` settings blob. Save states and controller settings are unchanged. Old plays cannot be reconstructed because the release did not record them. Deleted ROMs are omitted from the recent row.
+
+On detected Chromium engines below 91 (including the QN90A's Chromium 76), emulator core reports and archives use official EmulatorJS 4.1.1 builds; their JS glue is translated by a locally bundled, lazy-loaded Babel 7.26.10 (MIT). Newer engines keep their normal cores. The known 4.1.1 NES memory declaration starts at 32 MiB instead of 256 MiB, with memory growth still enabled. A compatibility shutdown exports the old runtime's audio/graphics objects and releases timers, listeners and contexts on exit.
+
+Build with `npm install` and `npm run build:tizen -- --skip-tizen-cli`, then sign the generated package using the **same author certificate and application ID as the existing installation**. Install in place; do not uninstall, which would remove app settings. Run `npm test --workspace @moonfin/app -- --watch=false --runInBand` for regression tests.
+
 ## Features
 
 - **Hardware-accelerated playback** through Samsung AVPlay, webOS Starfish, the Fire TV WebView and the Xbox console's own player, with direct play first and a transcode fallback only when needed.

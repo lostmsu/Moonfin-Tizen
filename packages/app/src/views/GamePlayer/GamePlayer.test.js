@@ -4,6 +4,7 @@ import * as gamesApi from '../../services/gamesApi';
 import {controllerIsOnlyRemote, giveControllerToGame} from '../../services/video';
 import * as ejs from '../../utils/emulatorjs';
 import {loadGameStateWithMigration} from '../../utils/gameSaves';
+import {recordGamePlayed} from '../../utils/gameHistory';
 import GamePlayer from './GamePlayer';
 
 jest.mock('react/jsx-dev-runtime', () => {
@@ -56,6 +57,7 @@ jest.mock('../../utils/gameSaves', () => ({
 	gameStateKey: (id, core) => `ejs-${core}-${id}`,
 	loadGameStateWithMigration: jest.fn()
 }));
+jest.mock('../../utils/gameHistory', () => ({recordGamePlayed: jest.fn(() => Promise.resolve())}));
 jest.mock('../../utils/emulatorjs', () => ({
 	isSupported: () => true,
 	unsupportedMessage: () => '',
@@ -88,8 +90,14 @@ const openMenu = async (options) => {
 };
 const rows = () => screen.getAllByText(/^(Resume|Back|Save state|Save & exit|Load state|Exit)$/).map((r) => r.textContent);
 
+test('a successful start records play history without needing a save state', async () => {
+	await startGame();
+	expect(recordGamePlayed).toHaveBeenCalledWith('lib', 'g1');
+});
+
 beforeEach(() => {
 	jest.clearAllMocks();
+	recordGamePlayed.mockResolvedValue();
 	gamesApi.getRomUrl.mockResolvedValue({url: 'rom', isBlob: false});
 	gamesApi.getSettingsBlob.mockResolvedValue(null);
 	gamesApi.putStateBytes.mockResolvedValue(undefined);
@@ -485,4 +493,5 @@ test('a game that fails to start takes EmulatorJS down and says so', async () =>
 	expect(await screen.findByText('Could not start this game on this device.')).toBeTruthy();
 	expect(ejs.destroyEmulator).toHaveBeenCalled();
 	expect(giveControllerToGame).not.toHaveBeenCalledWith(true);
+	expect(recordGamePlayed).not.toHaveBeenCalled();
 });

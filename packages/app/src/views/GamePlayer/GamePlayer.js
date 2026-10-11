@@ -14,6 +14,7 @@ import serverLogger from '../../services/serverLogger';
 import {controllerIsOnlyRemote, giveControllerToGame, initVideo, keepScreenOn, setupVisibilityHandler} from '../../services/video';
 import * as ejs from '../../utils/emulatorjs';
 import {gameStateKey, loadGameStateWithMigration} from '../../utils/gameSaves';
+import {recordGamePlayed} from '../../utils/gameHistory';
 import {KEYS, isBackKey} from '../../utils/keys';
 import {DETAIL_ICON_PATHS} from '../Details/detailIcons';
 
@@ -221,6 +222,7 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 				});
 				if (cancelled) return;
 				setReady(true);
+				recordGamePlayed(libraryId, game.id).catch(() => {});
 			} catch (e) {
 				// Backing out mid-load lands here too, and that is not worth reporting.
 				if (cancelled) return;

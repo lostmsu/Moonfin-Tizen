@@ -8,6 +8,7 @@
 	left: 0;
 	padding: 29px 0 0;
 	box-sizing: border-box;
+	background: #101010;
 }
 
 .header {
@@ -71,4 +72,47 @@
 	color: var(--theme-on-surface-variant, #cfd6e0);
 	text-align: center;
 	max-width: 60%;
+}
+
+.homeActions {
+	display: flex;
+	margin-left: auto;
+}
+
+.homeButton {
+	.toolbar-button();
+	width: auto;
+	padding: 10px 22px;
+	margin-left: 14px;
+	font-size: 22px;
+}
+
+.section {
+	padding: 0 57px;
+}
+
+.sectionTitle {
+	font-size: 26px;
+	font-weight: 400;
+	margin: 10px 13px;
+	color: #fff;
+}
+
+.systemsTitle {
+	margin-left: 70px;
+}
+
+.recentScroller {
+	height: 300px;
+}
+
+.recentRow {
+	white-space: nowrap;
+}
+
+.recentCell {
+	display: inline-block;
+	vertical-align: top;
+	padding: 13px;
+	white-space: normal;
 }
