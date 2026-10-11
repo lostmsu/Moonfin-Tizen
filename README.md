@@ -31,6 +31,8 @@ On detected Chromium engines below 91 (including the QN90A's Chromium 76), emula
 
 The QN90A still retained native RAM after frame removal and explicit JavaScript garbage collection. A top-level page reload released it. On legacy Tizen only, normal game Exit therefore reloads the app after the existing best-effort save/cleanup, then restores the game's details and Back-to-system navigation using a short-lived, account/server-scoped session marker. It never automatically re-enters gameplay. Sign-in, settings and recent history stay in persistent storage. As with the existing save timeout, stalled uploads are best effort and may be cancelled by the reload; use Save state explicitly before Exit when the server connection is unreliable.
 
+Hardware validation (QN90A, Tizen 6.0): eight NES titles passed launch, pause, Exit, return-to-details and Back-to-system tests, without overwriting server save states. In the final warmed-up run, with five seconds allowed for post-reload settling, post-exit app RSS ranged from 220 to 350 MiB and ended at 254 MiB; swap stayed around 13 MiB. An earlier rapid run on the same build reached 805 MiB and was stopped. The exit reset improves steady-state behavior, but cold/rapid-cycle memory safety is not fully resolved or guaranteed.
+
 Build with `npm install` and `npm run build:tizen -- --skip-tizen-cli`, then sign the generated package using the **same author certificate and application ID as the existing installation**. Install in place; do not uninstall, which would remove app settings. Run `npm test --workspace @moonfin/app -- --watch=false --runInBand` for regression tests.
 
 ## Features
