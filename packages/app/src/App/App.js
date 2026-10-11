@@ -67,6 +67,7 @@ import {resolveOverlayColor} from '../theme/overlayColors';
 import Login from '../views/Login';
 import Browse from '../views/Browse';
 import {isGameLibrary, refreshGameLibraries, resolveGameLibraryId} from '../utils/gameLibrary';
+import {takeLegacyGameReturn} from '../utils/legacyGameReset';
 
 const Details = lazy(() => import('../views/Details'));
 const Library = lazy(() => import('../views/Library'));
@@ -663,6 +664,17 @@ const AppContent = (props) => {
 			}
 		}
 	}, [isLoading, isAuthenticated, authChecked]);
+
+	useEffect(() => {
+		if (!authChecked || !isAuthenticated || !user?.Id) return;
+		const saved = takeLegacyGameReturn();
+		if (!saved) return;
+		setSelectedGameLibrary(saved.library);
+		setSelectedGame({id: saved.gameId});
+		setSelectedGameSystem(saved.system);
+		setPanelHistory(saved.system ? [PANELS.BROWSE, PANELS.GAME_SYSTEM] : [PANELS.BROWSE]);
+		setPanelIndex(PANELS.GAME_DETAILS);
+	}, [authChecked, isAuthenticated, user?.Id, serverUrl]);
 
 	const kidsBlockedPanels = useMemo(() => blockedPanels(PANELS), []);
 
@@ -1777,7 +1789,7 @@ const AppContent = (props) => {
 								<GameDetails
 									library={selectedGameLibrary}
 									gameId={selectedGame?.id}
-									initialGame={selectedGame}
+									initialGame={selectedGame?.core ? selectedGame : null}
 									onPlay={handlePlayGame}
 									onSelectGame={handleSelectGame}
 									backHandlerRef={backHandlerRef}
@@ -1790,6 +1802,7 @@ const AppContent = (props) => {
 									library={selectedGameLibrary}
 									game={selectedGame}
 									startFresh={gameStartFresh}
+									returnSystem={panelHistory.includes(PANELS.GAME_SYSTEM) ? selectedGameSystem : null}
 									onBack={handleBack}
 									backHandlerRef={backHandlerRef}
 								/>

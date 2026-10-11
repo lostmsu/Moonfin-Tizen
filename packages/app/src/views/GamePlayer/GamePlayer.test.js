@@ -5,6 +5,7 @@ import {controllerIsOnlyRemote, giveControllerToGame} from '../../services/video
 import * as ejs from '../../utils/emulatorjs';
 import {loadGameStateWithMigration} from '../../utils/gameSaves';
 import {recordGamePlayed} from '../../utils/gameHistory';
+import {resetLegacyGamePage} from '../../utils/legacyGameReset';
 import GamePlayer from './GamePlayer';
 
 jest.mock('react/jsx-dev-runtime', () => {
@@ -58,6 +59,7 @@ jest.mock('../../utils/gameSaves', () => ({
 	loadGameStateWithMigration: jest.fn()
 }));
 jest.mock('../../utils/gameHistory', () => ({recordGamePlayed: jest.fn(() => Promise.resolve())}));
+jest.mock('../../utils/legacyGameReset', () => ({resetLegacyGamePage: jest.fn(() => false)}));
 jest.mock('../../utils/emulatorjs', () => ({
 	isSupported: () => true,
 	unsupportedMessage: () => '',
@@ -98,6 +100,8 @@ test('a successful start records play history without needing a save state', asy
 beforeEach(() => {
 	jest.clearAllMocks();
 	recordGamePlayed.mockResolvedValue();
+	resetLegacyGamePage.mockReturnValue(false);
+	ejs.destroyEmulator.mockResolvedValue();
 	gamesApi.getRomUrl.mockResolvedValue({url: 'rom', isBlob: false});
 	gamesApi.getSettingsBlob.mockResolvedValue(null);
 	gamesApi.putStateBytes.mockResolvedValue(undefined);
@@ -205,6 +209,22 @@ test('Exit syncs the emulator settings after the save', async () => {
 	await waitFor(() => expect(onBack).toHaveBeenCalled());
 	expect(gamesApi.putStateBytes.mock.invocationCallOrder[0])
 		.toBeLessThan(gamesApi.putSettingsBlob.mock.invocationCallOrder[0]);
+});
+
+test('legacy reset waits for save and cleanup, without ordinary Back navigation', async () => {
+	let finishCleanup;
+	ejs.destroyEmulator.mockReturnValue(new Promise((resolve) => { finishCleanup = resolve; }));
+	resetLegacyGamePage.mockReturnValue(true);
+	await openMenu();
+	fireEvent.click(screen.getByText('Exit'));
+	fireEvent.click(screen.getByText('Save & exit'));
+	await waitFor(() => expect(ejs.destroyEmulator).toHaveBeenCalled());
+	expect(resetLegacyGamePage).not.toHaveBeenCalled();
+	expect(onBack).not.toHaveBeenCalled();
+	await act(async () => { finishCleanup(); });
+	expect(resetLegacyGamePage).toHaveBeenCalledWith({library: {Id: 'lib'}, game, system: undefined});
+	expect(onBack).not.toHaveBeenCalled();
+	expect(gamesApi.putStateBytes).toHaveBeenCalledTimes(1);
 });
 
 const shader = {

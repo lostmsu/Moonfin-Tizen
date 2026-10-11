@@ -15,6 +15,7 @@ import {controllerIsOnlyRemote, giveControllerToGame, initVideo, keepScreenOn, s
 import * as ejs from '../../utils/emulatorjs';
 import {gameStateKey, loadGameStateWithMigration} from '../../utils/gameSaves';
 import {recordGamePlayed} from '../../utils/gameHistory';
+import {resetLegacyGamePage} from '../../utils/legacyGameReset';
 import {KEYS, isBackKey} from '../../utils/keys';
 import {DETAIL_ICON_PATHS} from '../Details/detailIcons';
 
@@ -142,7 +143,7 @@ const ChoiceRow = memo(({choice, index, current, onPick, onWrapUp, onWrapDown}) 
 	);
 });
 
-const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
+const GamePlayer = ({library, game, startFresh, returnSystem, onBack, backHandlerRef}) => {
 	const [ready, setReady] = useState(false);
 	const [error, setError] = useState(null);
 	const [unsupported, setUnsupported] = useState(false);
@@ -277,8 +278,9 @@ const GamePlayer = ({library, game, startFresh, onBack, backHandlerRef}) => {
 		} catch (e) { /* leaving either way */ }
 		clearTimeout(timer);
 		await ejs.destroyEmulator();
+		if (resetLegacyGamePage({library, game, system: returnSystem})) return;
 		if (onBack) onBack();
-	}, [saveState, onBack]);
+	}, [saveState, onBack, library, game, returnSystem]);
 
 	// While playing, Spotlight is paused so the arrow/OK keys reach EmulatorJS instead of moving
 	// focus; it resumes only while the overlay is open.
