@@ -1,5 +1,6 @@
 import {isTizen} from '../platform';
 import {getServerUrl, getUserId} from '../services/jellyfinApi';
+import {giveControllerToGame, keepScreenOn} from '../services/video';
 import {needsLegacyCore} from './emulatorLegacy';
 
 const KEY = 'moonfin_game_return';
@@ -19,6 +20,10 @@ export const resetLegacyGamePage = ({library, game, system}, reload = () => wind
 			system: system ? {id: system.id, name: system.name} : null
 		}));
 	} catch (e) { /* Reload still releases RAM; unavailable storage returns Home. */ }
+	// Navigation does not run React unmount effects. Restore native TV policy
+	// before throwing away the page, including the game's screen wake lock.
+	try { giveControllerToGame(false); } catch (e) { /* optional platform hook */ }
+	try { keepScreenOn(false)?.catch(() => {}); } catch (e) { /* platform not loaded */ }
 	reload();
 	return true;
 };

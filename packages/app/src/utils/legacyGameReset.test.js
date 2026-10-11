@@ -1,10 +1,12 @@
 import {isTizen} from '../platform';
 import {getServerUrl, getUserId} from '../services/jellyfinApi';
+import {giveControllerToGame, keepScreenOn} from '../services/video';
 import {needsLegacyCore} from './emulatorLegacy';
 import {resetLegacyGamePage, takeLegacyGameReturn} from './legacyGameReset';
 
 jest.mock('../platform', () => ({isTizen: jest.fn()}));
 jest.mock('../services/jellyfinApi', () => ({getServerUrl: jest.fn(), getUserId: jest.fn()}));
+jest.mock('../services/video', () => ({giveControllerToGame: jest.fn(), keepScreenOn: jest.fn()}));
 jest.mock('./emulatorLegacy', () => ({needsLegacyCore: jest.fn()}));
 
 const context = {library: {Id: 'lib', Name: 'Games'}, game: {id: 'rom', token: 'never-store'}, system: {id: 'NES', name: 'NES'}};
@@ -20,6 +22,9 @@ test('reloads legacy Tizen and restores only one-shot, non-playing navigation', 
 	const reload = jest.fn();
 	expect(resetLegacyGamePage(context, reload)).toBe(true);
 	expect(reload).toHaveBeenCalledTimes(1);
+	expect(giveControllerToGame).toHaveBeenCalledWith(false);
+	expect(keepScreenOn).toHaveBeenCalledWith(false);
+	expect(keepScreenOn.mock.invocationCallOrder[0]).toBeLessThan(reload.mock.invocationCallOrder[0]);
 	expect(window.sessionStorage.getItem('moonfin_game_return')).not.toContain('never-store');
 	expect(takeLegacyGameReturn()).toEqual({library: context.library, gameId: 'rom', system: context.system});
 	expect(takeLegacyGameReturn()).toBeNull();
